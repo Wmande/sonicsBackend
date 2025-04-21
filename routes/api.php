@@ -17,3 +17,11 @@ Route::get('/events/{id}', [EventController::class, 'show']);
 Route::put('/events/{id}', [EventController::class, 'update']);
 
 
+Route::middleware('cors')->group(function () {
+    Route::get('/endpoint', [UserController::class, 'index']);
+    // Add other API routes here
+});
+Route::middleware('cors')->group(function () {
+    Route::get('/endpoint', [EventController::class, 'index']);
+    // Add other API routes here
+});
