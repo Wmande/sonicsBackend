@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     zip \
     unzip \
-    nginx
+    nginx \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions
 RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
@@ -21,11 +22,12 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local
 # Set working directory
 WORKDIR /var/www
 
-# Copy project files
-COPY . .
+# Copy composer files first to cache dependencies
+COPY composer.json composer.lock ./
+RUN php -d memory_limit=-1 /usr/local/bin/composer install --optimize-autoloader --no-dev
 
-# Install Laravel dependencies
-RUN composer install --optimize-autoloader --no-dev
+# Copy application files
+COPY . .
 
 # Copy Nginx configuration
 COPY ./nginx.conf /etc/nginx/sites-available/default
@@ -34,9 +36,9 @@ COPY ./nginx.conf /etc/nginx/sites-available/default
 COPY ./start.sh /start.sh
 RUN chmod +x /start.sh
 
-# Set permissions
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
-RUN chmod -R 755 /var/www/storage /var/www/bootstrap/cache
+# Set permissions for Laravel directories
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache /var/www/public
+RUN chmod -R 755 /var/www/storage /var/www/bootstrap/cache /var/www/public
 
 # Expose port 80 for HTTP traffic
 EXPOSE 80
