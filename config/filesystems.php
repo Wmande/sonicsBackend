@@ -61,6 +61,7 @@ return [
         'root' => env('GOOGLE_CREDENTIALS_PATH', storage_path('credentials')),
         'throw' => false,
         'report' => false,
+        // Named 'gcloud-credentials' in Render with mount path /opt/gcloud, size 1 GB
     ],
 ],
 
