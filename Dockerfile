@@ -1,47 +1,25 @@
-# Use official PHP image with PHP 8.2
-FROM php:8.2-fpm
+FROM richarvey/nginx-php-fpm:3.1.6
 
-# Install system dependencies, including Nginx
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
-    zip \
-    unzip \
-    nginx \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install PHP extensions
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
-
-# Install Composer
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-
-# Set working directory
-WORKDIR /var/www
-
-# Copy composer files first to cache dependencies
-COPY composer.json composer.lock ./
-RUN php -d memory_limit=-1 /usr/local/bin/composer install --optimize-autoloader --no-dev
-
-# Copy application files
+# Copy project files
 COPY . .
 
-# Copy Nginx configuration
-COPY ./nginx.conf /etc/nginx/sites-available/default
+# Image config
+ENV SKIP_COMPOSER 1
+ENV WEBROOT /var/www/html/public
+ENV PHP_ERRORS_STDERR 1
+ENV RUN_SCRIPTS 1
+ENV REAL_IP_HEADER 1
 
-# Copy start script
-COPY ./start.sh /start.sh
-RUN chmod +x /start.sh
+# Laravel config
+ENV APP_ENV production
+ENV APP_DEBUG false
+ENV LOG_CHANNEL stderr
 
-# Set permissions for Laravel directories
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache /var/www/public
-RUN chmod -R 755 /var/www/storage /var/www/bootstrap/cache /var/www/public
+# Allow composer to run as root
+ENV COMPOSER_ALLOW_SUPERUSER 1
 
-# Expose port 80 for HTTP traffic
-EXPOSE 80
+# Install Google Cloud SDK for additional tools (optional)
+RUN apk add --no-cache python3 py3-pip bash \
+    && pip3 install --no-cache-dir google-cloud-sdk
 
-# Start Nginx and PHP-FPM using the start script
 CMD ["/start.sh"]
