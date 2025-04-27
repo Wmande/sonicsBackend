@@ -5,3 +5,5 @@ storage/credentials/laravel.json
 .git
 .gitignore
 storage/*.key
+*.md
+*.log
