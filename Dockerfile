@@ -1,20 +1,43 @@
-FROM richarvey/nginx-php-fpm:3.1.6
+# Use the official PHP image with necessary extensions
+FROM php:8.2-fpm
 
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpng-dev \
+    libjpeg-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    curl \
+    git \
+    libzip-dev \
+    libpq-dev \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libsqlite3-dev \
+    sqlite3 \
+    nano \
+    && docker-php-ext-install pdo pdo_mysql mbstring exif pcntl bcmath gd zip
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /var/www
+
+# Copy app files
 COPY . .
 
-RUN apk add --no-cache python3 py3-pip bash \
-    && pip3 install --no-cache-dir google-cloud-sdk
+# Install PHP dependencies
+RUN composer install --optimize-autoloader --no-dev
 
-ENV SKIP_COMPOSER 1
-ENV WEBROOT /var/www/html/public
-ENV PHP_ERRORS_STDERR 1
-ENV RUN_SCRIPTS 1
-ENV REAL_IP_HEADER 1
+# Set permissions
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
-ENV APP_ENV production
-ENV APP_DEBUG false
-ENV LOG_CHANNEL stderr
+# Expose port
+EXPOSE 8000
 
-ENV COMPOSER_ALLOW_SUPERUSER 1
-
-CMD ["/start.sh"]
+# Start Laravel using built-in PHP server
+CMD php artisan serve --host=0.0.0.0 --port=8000
