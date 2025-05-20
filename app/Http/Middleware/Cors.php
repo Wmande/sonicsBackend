@@ -7,10 +7,7 @@ class Cors
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $allowedOrigins = [
-            'https://your-app.vercel.app', // Your Vercel domain
-            'http://localhost:3000',       // For local development
-        ];
+        $allowedOrigins = ['*'];
         $origin = $request->headers->get('Origin');
         $response = $next($request);
         if (in_array($origin, $allowedOrigins)) {
