@@ -33,11 +33,22 @@ COPY . .
 # Install PHP dependencies
 RUN composer install --optimize-autoloader --no-dev
 
+# Create directory for Google credentials
+RUN mkdir -p /var/www/storage/credentials
+
+# Decode the base64-encoded Google credentials from an environment variable
+# (Done at container runtime, not build time)
+# Use entrypoint script to do this
+
 # Set permissions
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
 # Expose port
 EXPOSE 8000
 
-# Start Laravel using built-in PHP server
-CMD php artisan serve --host=0.0.0.0 --port=8000
+# Copy and use custom entrypoint
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Use the entrypoint to decode creds and then start Laravel
+ENTRYPOINT ["docker-entrypoint.sh"]
