@@ -6,32 +6,31 @@ use Google\Cloud\Datastore\DatastoreClient;
 use Google\Cloud\Storage\StorageClient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class UserController extends Controller
 {
     public function store(Request $request)
     {
         try {
-            // Log incoming request data for debugging
-            Log::info('Incoming request data', $request->all());
-
-            // Validation rules matching the frontend form
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'position' => 'required|string|in:Center,Power Forward,Small Forward,Point Guard,Shooting Guard',
+                'team' => 'required|string|in:Bungoma Poly,Cheptais Hunters,Chetambe Bulls,Team Seven,Jogoo Club,FSK Tigers,Kisiwa Rockets,Malaba Hawks',
                 'height' => 'required|string|max:255',
                 'age' => 'required|integer|min:0',
-                'status' => 'required|string|in:Active,Inactive,Injury,Pending', // Match dropdown options
-                'image' => 'nullable|image|max:2048', // Optional image, max 2MB
+                'status' => 'required|string|in:Active,Inactive,Injury,Pending',
+                'image' => 'nullable|image|max:2048',
             ]);
 
             $datastore = new DatastoreClient();
-            $key = $datastore->key('players'); // Using 'players' kind as per your controller
+            $key = $datastore->key('players');
             $entityData = [
                 'Name' => $validated['name'],
                 'Position' => $validated['position'],
                 'Height' => $validated['height'],
-                'Age' => (int) $validated['age'], // Cast to integer
+                'Team' => $validated['team'],
+                'Age' => (int) $validated['age'],
                 'Status' => $validated['status'],
                 'createdAt' => new \DateTime(),
             ];
@@ -62,7 +61,7 @@ class UserController extends Controller
                 'imageUrl' => $imageUrl,
             ], 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::error('Validation failed', $e->errors());
+            Log::warning('Validation failed in store');
             return response()->json([
                 'success' => false,
                 'error' => $e->errors(),
@@ -76,19 +75,32 @@ class UserController extends Controller
         }
     }
 
-    public function index()
-    {
-        try {
+
+
+public function index(Request $request)
+{
+    try {
+        $team = $request->get('team');
+
+        // Unique cache key per team
+        $cacheKey = $team ? "players_team_" . md5($team) : "players_all";
+
+        $submissions = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($team) {
             $datastore = new DatastoreClient();
             $storage = new StorageClient();
             $bucket = $storage->bucket('app-one-da1ad.appspot.com');
 
             $query = $datastore->query()
-                ->kind('players')
-                ->order('createdAt', 'DESCENDING');
-            $results = $datastore->runQuery($query);
+                ->kind('players');
 
-            $submissions = [];
+
+            if ($team) {
+                $query->filter('Team', '=', $team);
+            }
+
+            $results = $datastore->runQuery($query);
+            $players = [];
+
             foreach ($results as $entity) {
                 $imageUrl = null;
                 if ($entity['imagePath'] ?? null) {
@@ -98,30 +110,36 @@ class UserController extends Controller
                     }
                 }
 
-                $submissions[] = [
+                $players[] = [
                     'id' => $entity->key()->pathEnd()['id'],
                     'Name' => $entity['Name'] ?? '',
                     'Position' => $entity['Position'] ?? '',
+                    'Team' => $entity['Team'] ?? '',
                     'Height' => $entity['Height'] ?? '',
                     'Age' => $entity['Age'] ?? 0,
                     'Status' => $entity['Status'] ?? '',
-                    'createdAt' => $entity['createdAt'] instanceof \DateTimeInterface ? $entity['createdAt']->format('c') : null,
+                    'createdAt' => $entity['createdAt'] instanceof \DateTimeInterface
+                        ? $entity['createdAt']->format('c') : null,
                     'imageUrl' => $imageUrl,
                 ];
             }
 
-            return response()->json([
-                'success' => true,
-                'data' => $submissions,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Something went wrong: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ], 500);
-        }
+            return $players;
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $submissions,
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Datastore fetch error: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage(),
+        ], 500);
     }
+}
+
 
     public function destroy(Request $request, $id)
     {
@@ -130,18 +148,13 @@ class UserController extends Controller
             $storage = new StorageClient();
             $bucket = $storage->bucket('app-one-da1ad.appspot.com');
 
-            // Lookup the entity by ID
             $key = $datastore->key('players', (int) $id);
             $entity = $datastore->lookup($key);
 
             if (!$entity) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'User not found',
-                ], 404);
+                return response()->json(['success' => false, 'error' => 'User not found'], 404);
             }
 
-            // Delete the image from GCS if it exists
             if (isset($entity['imagePath'])) {
                 $object = $bucket->object($entity['imagePath']);
                 if ($object->exists()) {
@@ -149,7 +162,6 @@ class UserController extends Controller
                 }
             }
 
-            // Delete the entity from Datastore
             $datastore->delete($key);
 
             return response()->json([
@@ -157,7 +169,7 @@ class UserController extends Controller
                 'message' => 'User data and image deleted successfully',
             ]);
         } catch (\Exception $e) {
-            Log::error('Error deleting user: ' . $e->getMessage());
+            Log::error('Error in destroy: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -194,6 +206,7 @@ class UserController extends Controller
                 'id' => $entity->key()->pathEnd()['id'],
                 'Name' => $entity['Name'] ?? '',
                 'Position' => $entity['Position'] ?? '',
+                'Team' => $entity['Team'] ?? '',
                 'Height' => $entity['Height'] ?? '',
                 'Age' => $entity['Age'] ?? 0,
                 'Status' => $entity['Status'] ?? '',
@@ -206,7 +219,7 @@ class UserController extends Controller
                 'data' => $submission,
             ]);
         } catch (\Exception $e) {
-            Log::error('Something went wrong: ' . $e->getMessage());
+            Log::error('Error in show: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -217,12 +230,10 @@ class UserController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            // Log the incoming request data
-            Log::info('Update request received', ['id' => $id, 'data' => $request->all()]);
-
             $validated = $request->validate([
                 'name' => 'string|max:255',
                 'position' => 'string|max:255',
+                'team' => 'string|in:Bungoma Poly,Cheptais Hunters,Chetambe Bulls,Team Seven,Jogoo Club,FSK Tigers,Kisiwa Rockets,Malaba Hawks',
                 'height' => 'string|max:255',
                 'age' => 'integer|min:0',
                 'status' => 'string|max:255',
@@ -233,45 +244,35 @@ class UserController extends Controller
             $storage = new StorageClient();
             $bucket = $storage->bucket('app-one-da1ad.appspot.com');
 
-            // Lookup the existing entity by ID
             $key = $datastore->key('players', (int) $id);
             $entity = $datastore->lookup($key);
 
             if (!$entity) {
-                Log::warning('Something went wrong', ['id' => $id]);
                 return response()->json([
                     'success' => false,
                     'error' => 'Submission not found',
                 ], 404);
             }
 
-            // Log the current entity data
-            Log::info('Current entity data', $entity->get());
-
-            // Prepare updated entity data, merging with existing values
             $entityData = [
                 'Name' => $validated['name'] ?? $entity['Name'],
                 'Position' => $validated['position'] ?? $entity['Position'],
+                'Team' => $validated['team'] ?? $entity['Team'],
                 'Height' => $validated['height'] ?? $entity['Height'],
                 'Age' => isset($validated['age']) ? (int) $validated['age'] : $entity['Age'],
                 'Status' => $validated['status'] ?? $entity['Status'],
-                'createdAt' => $entity['createdAt'], // Preserve original creation date
+                'createdAt' => $entity['createdAt'],
             ];
 
-            $imageUrl = $entity['imagePath'] ? $bucket->object($entity['imagePath'])->signedUrl(new \DateTime('+1 hour'), ['version' => 'v4']) : null;
-
-            // Handle image upload if provided
+            $imageUrl = null;
             if ($request->hasFile('image')) {
-                // Delete the old image from GCS if it exists
                 if (isset($entity['imagePath'])) {
                     $oldObject = $bucket->object($entity['imagePath']);
                     if ($oldObject->exists()) {
                         $oldObject->delete();
-                        Log::info('Old image deleted', ['path' => $entity['imagePath']]);
                     }
                 }
 
-                // Upload the new image
                 $file = $request->file('image');
                 $fileName = 'sonicsplayers/' . uniqid() . '.' . $file->getClientOriginalExtension();
                 $filePath = $file->getRealPath();
@@ -283,21 +284,15 @@ class UserController extends Controller
 
                 $entityData['imagePath'] = $fileName;
                 $imageUrl = $object->signedUrl(new \DateTime('+1 hour'), ['version' => 'v4']);
-                Log::info('New image uploaded', ['path' => $fileName]);
             } else {
                 $entityData['imagePath'] = $entity['imagePath'] ?? null;
+                if ($entityData['imagePath']) {
+                    $imageUrl = $bucket->object($entityData['imagePath'])->signedUrl(new \DateTime('+1 hour'), ['version' => 'v4']);
+                }
             }
 
-            // Log the data to be updated
-            Log::info('Updated entity data', $entityData);
-
-            // Update the entity in Datastore
             $updatedEntity = $datastore->entity($key, $entityData);
             $datastore->upsert($updatedEntity);
-
-            // Confirm the update was applied by fetching the entity again
-            $postUpdateEntity = $datastore->lookup($key);
-            Log::info('Entity after update', $postUpdateEntity->get());
 
             return response()->json([
                 'success' => true,
@@ -306,6 +301,7 @@ class UserController extends Controller
                     'id' => $id,
                     'Name' => $entityData['Name'],
                     'Position' => $entityData['Position'],
+                    'Team' => $entityData['Team'],
                     'Height' => $entityData['Height'],
                     'Age' => $entityData['Age'],
                     'Status' => $entityData['Status'],
@@ -314,11 +310,66 @@ class UserController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            Log::error('Something went wrong: ' . $e->getMessage(), ['id' => $id]);
+            Log::error('Error in update: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage(),
             ], 500);
         }
     }
+    public function getPlayersByTeam(Request $request)
+{
+    $team = $request->query('team');
+
+    $datastore = new DatastoreClient();
+    $query = $datastore->query()
+        ->kind('players')
+        ->filter('Team', '=', $team);
+
+
+    $results = $datastore->runQuery($query);
+    $players = [];
+
+    foreach ($results as $player) {
+        $data = $player->get();
+        $data['id'] = $player->key()->pathEndIdentifier(); // ensure unique ID
+        $players[] = $data;
+    }
+
+    return response()->json(['data' => $players]);
+}
+
+    public function getAllTeams()
+    {
+        try {
+            $teams = Cache::remember('unique_teams', now()->addMinutes(10), function () {
+                $datastore = new DatastoreClient();
+                $query = $datastore->query()->kind('players');
+                $results = $datastore->runQuery($query);
+
+                $teamNames = [];
+                foreach ($results as $entity) {
+                    if (isset($entity['Team'])) {
+                        $teamNames[] = $entity['Team'];
+                    }
+                }
+
+                $uniqueTeams = array_values(array_unique($teamNames));
+                sort($uniqueTeams);
+                return $uniqueTeams;
+            });
+
+            return response()->json([
+                'success' => true,
+                'teams' => $teams,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching team names: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to fetch team names',
+            ], 500);
+        }
+    }
+
 }
