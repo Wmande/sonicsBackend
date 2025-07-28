@@ -26,6 +26,7 @@ class StandingsController extends Controller
             'won' => 'required|integer|min:0',
             'lost' => 'required|integer|min:0',
             'points' => 'required|integer|min:0',
+            'conference' => 'required|string|in:Kimilili,Bungoma',
         ]);
 
         try {
@@ -33,6 +34,7 @@ class StandingsController extends Controller
 
             $entity = $this->datastore->entity($key, [
                 'team' => $request->input('team'),
+                'conference' => $request->input('conference'),
                 'gamesPlayed' => (int)$request->input('gamesPlayed'),
                 'won' => (int)$request->input('won'),
                 'lost' => (int)$request->input('lost'),
