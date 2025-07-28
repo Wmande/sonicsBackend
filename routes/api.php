@@ -22,6 +22,9 @@ Route::put('/events/{id}', [EventController::class, 'update']);
 
 Route::post('/recent-scores', [TeamScoreController::class, 'store']);
 Route::get('/recent-scores', [TeamScoreController::class, 'index']);
+Route::put('/recent-scores/{id}', [TeamScoreController::class, 'update']);
+Route::delete('/recent-scores/{id}', [TeamScoreController::class, 'destroy']);
+
 
 Route::prefix('standings')->group(function () {
     Route::get('/', [StandingsController::class, 'index']);

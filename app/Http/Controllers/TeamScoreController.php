@@ -88,4 +88,78 @@ class TeamScoreController extends Controller
             ], 500);
         }
     }
+
+    public function update(Request $request, $id)
+{
+    $request->validate([
+        'teamA' => 'sometimes|required|string|in:Bungoma Poly,Cheptais Hunters,Chetambe Bulls,Team Seven,Jogoo Club,FSK Tigers,Kisiwa Rockets,Malaba Hawks',
+        'teamAscores' => 'sometimes|required|integer|min:0',
+        'teamB' => 'sometimes|required|string|in:Bungoma Poly,Cheptais Hunters,Chetambe Bulls,Team Seven,Jogoo Club,FSK Tigers,Kisiwa Rockets,Malaba Hawks',
+        'teamBscores' => 'sometimes|required|integer|min:0',
+        'match_date' => 'sometimes|date',
+    ]);
+
+    try {
+        $key = $this->datastore->key('recentScores', (int)$id);
+        $entity = $this->datastore->lookup($key);
+
+        if (!$entity) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Match score not found',
+            ], 404);
+        }
+
+        // Only update provided fields
+        foreach (['teamA', 'teamAscores', 'teamB', 'teamBscores', 'match_date'] as $field) {
+            if ($request->filled($field)) {
+                $entity[$field] = $request->input($field);
+            }
+        }
+
+        $this->datastore->update($entity);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Match score updated successfully',
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Failed to update recent score: ' . $e->getMessage());
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to update score',
+        ], 500);
+    }
+}
+
+public function destroy($id)
+{
+    try {
+        $key = $this->datastore->key('recentScores', (int)$id);
+        $entity = $this->datastore->lookup($key);
+
+        if (!$entity) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Match score not found',
+            ], 404);
+        }
+
+        $this->datastore->delete($key);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Match score deleted successfully',
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Failed to delete recent score: ' . $e->getMessage());
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to delete score',
+        ], 500);
+    }
+}
+
 }
