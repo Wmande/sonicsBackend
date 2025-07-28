@@ -5,6 +5,10 @@ use App\Http\Controllers\EventController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TeamScoreController;
 use App\Http\Controllers\StandingsController;
+use App\Http\Controllers\ImageUploadController;
+
+
+
 
 Route::post('/submit-user', [UserController::class, 'store']);
 Route::get('/submissions', [UserController::class, 'index']);
@@ -46,4 +50,9 @@ Route::middleware('cors')->group(function () {
 });
 Route::get('/players', [UserController::class, 'getPlayersByTeam']);
 Route::get('/teams', [UserController::class, 'getAllTeams']);
+
+
+Route::post('/upload-images', [ImageUploadController::class, 'upload']);
+Route::delete('/delete-image', [ImageUploadController::class, 'delete']);
+
 
