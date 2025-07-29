@@ -48,6 +48,7 @@ class TeamScoreController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Match score saved successfully',
+                'data' => array_merge($entity->get(), ['id' => $entity->key()->pathEndIdentifier()])
             ], 201);
         } catch (\Exception $e) {
             Log::error('Failed to store recent score: ' . $e->getMessage());
@@ -72,7 +73,9 @@ class TeamScoreController extends Controller
 
             $scores = [];
             foreach ($results as $entity) {
-                $scores[] = $entity->get();
+                    $data = $entity->get();
+                    $data['id'] = $entity->key()->pathEndIdentifier();
+                    $scores[] = $data;
             }
 
             return response()->json([
@@ -119,10 +122,12 @@ class TeamScoreController extends Controller
 
         $this->datastore->update($entity);
 
-        return response()->json([
+            return response()->json([
             'success' => true,
             'message' => 'Match score updated successfully',
+            'data' => array_merge($entity->get(), ['id' => $entity->key()->pathEndIdentifier()])
         ]);
+
     } catch (\Exception $e) {
         Log::error('Failed to update recent score: ' . $e->getMessage());
 
