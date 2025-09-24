@@ -81,55 +81,56 @@ public function index(Request $request)
 {
     try {
         $team = $request->get('team');
-
-        // Unique cache key per team
+        
+        // Clear cache key when no team specified to ensure we get all data
         $cacheKey = $team ? "players_team_" . md5($team) : "players_all";
+        
+        // Temporarily disable cache to test if that's the issue
+        // $submissions = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($team) {
+        
+        $datastore = new DatastoreClient();
+        $storage = new StorageClient();
+        $bucket = $storage->bucket('app-one-da1ad.appspot.com');
 
-        $submissions = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($team) {
-            $datastore = new DatastoreClient();
-            $storage = new StorageClient();
-            $bucket = $storage->bucket('app-one-da1ad.appspot.com');
+        $query = $datastore->query()->kind('players');
 
-            $query = $datastore->query()
-                ->kind('players');
+        // Only apply team filter if team is specified
+        if ($team) {
+            $query->filter('Team', '=', $team);
+        }
 
+        $results = $datastore->runQuery($query);
+        $players = [];
 
-            if ($team) {
-                $query->filter('Team', '=', $team);
-            }
-
-            $results = $datastore->runQuery($query);
-            $players = [];
-
-            foreach ($results as $entity) {
-                $imageUrl = null;
-                if ($entity['imagePath'] ?? null) {
-                    $object = $bucket->object($entity['imagePath']);
-                    if ($object->exists()) {
-                        $imageUrl = $object->signedUrl(new \DateTime('+1 hour'), ['version' => 'v4']);
-                    }
+        foreach ($results as $entity) {
+            $imageUrl = null;
+            if ($entity['imagePath'] ?? null) {
+                $object = $bucket->object($entity['imagePath']);
+                if ($object->exists()) {
+                    $imageUrl = $object->signedUrl(new \DateTime('+1 hour'), ['version' => 'v4']);
                 }
-
-                $players[] = [
-                    'id' => $entity->key()->pathEnd()['id'],
-                    'Name' => $entity['Name'] ?? '',
-                    'Position' => $entity['Position'] ?? '',
-                    'Team' => $entity['Team'] ?? '',
-                    'Height' => $entity['Height'] ?? '',
-                    'Age' => $entity['Age'] ?? 0,
-                    'Status' => $entity['Status'] ?? '',
-                    'createdAt' => $entity['createdAt'] instanceof \DateTimeInterface
-                        ? $entity['createdAt']->format('c') : null,
-                    'imageUrl' => $imageUrl,
-                ];
             }
 
-            return $players;
-        });
+            $players[] = [
+                'id' => $entity->key()->pathEnd()['id'],
+                'Name' => $entity['Name'] ?? '',
+                'Position' => $entity['Position'] ?? '',
+                'Team' => $entity['Team'] ?? '',
+                'Height' => $entity['Height'] ?? '',
+                'Age' => $entity['Age'] ?? 0,
+                'Status' => $entity['Status'] ?? '',
+                'createdAt' => $entity['createdAt'] instanceof \DateTimeInterface
+                    ? $entity['createdAt']->format('c') : null,
+                'imageUrl' => $imageUrl,
+            ];
+        }
+
+        // return $players; // Temporarily disable cache
+        // });
 
         return response()->json([
             'success' => true,
-            'data' => $submissions,
+            'data' => $players,
         ]);
     } catch (\Exception $e) {
         Log::error('Datastore fetch error: ' . $e->getMessage());
